@@ -169,13 +169,7 @@
         }
         
         .restart-button {
-            background-color: #fff;
-            border: none;
-            font-size: 2em;
-            cursor: pointer;
-            position: fixed;
-            top: 10px;
-            right: 10px;
+            display: none; /* Removido do layout */
         }
 
         /* Página de Ranking */
@@ -329,8 +323,7 @@
                 <div>Tempo: <span id="timer">00:00</span></div>
             </div>
             <div class="board"></div>
-            <button class="restart-button" id="restartButton">🔄</button>
-        </div>
+            </div>
 
         <div id="admin-page">
             <h2>Painel de Administração</h2>
@@ -382,7 +375,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, collection, addDoc, query, orderBy, getDocs, deleteDoc, doc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, query, orderBy, getDocs, deleteDoc, doc, runTransaction, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // Cole a configuração do seu Firebase AQUI
         const firebaseConfig = {
@@ -421,7 +414,6 @@
         const finalTimeSpan = document.getElementById('finalTime');
         const finalDateSpan = document.getElementById('finalDate');
         const saveScoreButton = document.getElementById('saveScoreButton');
-        const restartButton = document.getElementById('restartButton');
         const adminPage = document.getElementById('admin-page');
         const showAllPlayersButton = document.getElementById('showAllPlayers');
         const rebootButton = document.getElementById('rebootButton');
@@ -443,7 +435,6 @@
         let firstCard, secondCard;
         let moves = 0;
         let matchedPairs = 0;
-        let restartCount = 0;
 
         // --- Funções de Lógica do Jogo ---
         function shuffle(array) {
@@ -569,7 +560,6 @@
         }
         
         function restartGame() {
-            restartCount++;
             stopTimer();
             moves = 0;
             matchedPairs = 0;
@@ -583,17 +573,29 @@
         // --- Interação com o Banco de Dados (Firebase) ---
         async function saveScore() {
             try {
-                await addDoc(collection(db, "jogadores"), {
-                    nome: playerName,
-                    pontuacao: moves,
-                    tempo: seconds,
-                    data: new Date(),
-                    reinicios: restartCount
-                });
-                winnerModal.style.display = 'none';
-                gameContent.style.display = 'none';
-                rankingPage.style.display = 'flex';
-                loadScores();
+                // Checa se o usuário já salvou um score
+                const playerQuery = query(collection(db, "jogadores"), where("nome", "==", playerName));
+                const querySnapshot = await getDocs(playerQuery);
+                
+                if (querySnapshot.empty) {
+                    await addDoc(collection(db, "jogadores"), {
+                        nome: playerName,
+                        pontuacao: moves,
+                        tempo: seconds,
+                        data: new Date(),
+                    });
+                    winnerModal.style.display = 'none';
+                    gameContent.style.display = 'none';
+                    rankingPage.style.display = 'flex';
+                    loadScores();
+                } else {
+                    alert("Seu score já foi salvo. Não é possível salvar mais de uma vez com o mesmo nickname.");
+                    winnerModal.style.display = 'none';
+                    gameContent.style.display = 'none';
+                    rankingPage.style.display = 'flex';
+                    loadScores();
+                }
+
             } catch (e) {
                 console.error("Erro ao salvar a pontuação: ", e);
                 alert("Erro ao salvar a pontuação. Verifique a configuração do seu Firebase e as regras de segurança.");
@@ -652,7 +654,7 @@
                 const data = doc.data();
                 const li = document.createElement('li');
                 li.innerHTML = `
-                    <span>Nick: ${data.nome}, Tempo: ${data.tempo}s, Reinicios: ${data.reinicios}, Data: ${data.data.toDate().toLocaleString()}</span>
+                    <span>Nick: ${data.nome}, Tempo: ${data.tempo}s, Movimentos: ${data.pontuacao}, Data: ${data.data.toDate().toLocaleString()}</span>
                     <button class="removeUserButton" data-id="${doc.id}">Remover</button>
                 `;
                 ul.appendChild(li);
@@ -699,8 +701,9 @@
             startButton.disabled = nicknameInput.value.trim() === '';
         });
 
-        startButton.addEventListener('click', () => {
+        startButton.addEventListener('click', async () => {
             playerName = nicknameInput.value.trim();
+            
             if (playerName.toLowerCase() === ADMIN_NICKNAME) {
                 startPage.style.display = 'none';
                 gameContent.style.display = 'none';
@@ -708,6 +711,18 @@
                 adminPage.style.display = 'block';
                 showAllPlayers();
             } else if (playerName) {
+                // Checa se o nickname já existe no banco de dados
+                const playerQuery = query(collection(db, "jogadores"), where("nome", "==", playerName));
+                const querySnapshot = await getDocs(playerQuery);
+                
+                if (!querySnapshot.empty) {
+                    alert("Este nickname já foi usado para um jogo. Por favor, escolha outro.");
+                    startPage.style.display = 'none';
+                    rankingPage.style.display = 'flex';
+                    loadScores();
+                    return;
+                }
+
                 startPage.style.display = 'none';
                 gameContent.style.display = 'flex';
                 restartGame();
@@ -715,13 +730,9 @@
         });
 
         saveScoreButton.addEventListener('click', saveScore);
-        restartButton.addEventListener('click', () => {
-            restartGame();
-        });
         showAllPlayersButton.addEventListener('click', showAllPlayers);
         rebootButton.addEventListener('click', rebootDatabase);
 
     </script>
 </body>
 </html>
-
